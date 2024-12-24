@@ -4,7 +4,7 @@ import torch.optim as optim
 from model import Generator, Discriminator
 from loss import adversarial_loss, cycle_consistency_loss
 from util import TextDataset, load_data
-from transformers import BertTokenizer
+from transformers import BertTokenizer, BertModel
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -21,11 +21,15 @@ vocab_size = tokenizer.vocab_size
 dataset = TextDataset(standard_japanese_sentences, kansai_dialect_sentences, tokenizer)
 dataloader = DataLoader(dataset, batch_size=16, shuffle=True)
 
-G_A_to_B = Generator(vocab_size=vocab_size).to(device)
-G_B_to_A = Generator(vocab_size=vocab_size).to(device)
-D_A = Discriminator(vocab_size=vocab_size).to(device)
-D_B = Discriminator(vocab_size=vocab_size).to(device)
-optimizer_G = optim.Adam(list(G_A_to_B.parameters()) + list(G_B_to_A.parameters()), lr=0.0002, betas=(0.5, 0.999))
+embedding_layer = BertModel.from_pretrained('./bert', local_files_only=True)
+for param in embedding_layer.parameters():
+    param.requires_grad = False
+
+G_A_to_B = Generator(vocab_size=vocab_size, embedding_layer=embedding_layer).to(device)
+G_B_to_A = Generator(vocab_size=vocab_size, embedding_layer=embedding_layer).to(device)
+D_A = Discriminator(vocab_size=vocab_size, embedding_layer=embedding_layer).to(device)
+D_B = Discriminator(vocab_size=vocab_size, embedding_layer=embedding_layer).to(device)
+optimizer_G = optim.Adam(list(G_A_to_B.parameters()) + list(G_B_to_A.parameters()), lr=0.001, betas=(0.5, 0.999))
 optimizer_D_A = optim.Adam(D_A.parameters(), lr=0.0002, betas=(0.5, 0.999))
 optimizer_D_B = optim.Adam(D_B.parameters(), lr=0.0002, betas=(0.5, 0.999))
 
@@ -67,8 +71,8 @@ for epoch in range(num_epochs):
         # compute the loss for G
         loss_G_A_to_B = adversarial_loss(D_B(fake_B), torch.ones_like(D_B(fake_B)))
         loss_G_B_to_A = adversarial_loss(D_A(fake_A), torch.ones_like(D_A(fake_A)))
-        loss_cycle_A = cycle_consistency_loss(real_A, cycle_A)
-        loss_cycle_B = cycle_consistency_loss(real_B, cycle_B)
+        loss_cycle_A = cycle_consistency_loss(real_A, cycle_A, embedding_layer)
+        loss_cycle_B = cycle_consistency_loss(real_B, cycle_B, embedding_layer)
 
         # total loss for G
         loss_G = loss_G_A_to_B + loss_G_B_to_A + loss_cycle_A + loss_cycle_B

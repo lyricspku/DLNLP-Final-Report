@@ -8,7 +8,7 @@ def load_data(json_file):
     return data
 
 class TextDataset(Dataset):
-    def __init__(self, standard_sentences, kansai_sentences, tokenizer, max_length=128):
+    def __init__(self, standard_sentences, kansai_sentences, tokenizer, max_length=100):
         self.standard_sentences = standard_sentences
         self.kansai_sentences = kansai_sentences
         self.tokenizer = tokenizer
@@ -49,3 +49,11 @@ class TextDataset_V2(Dataset):
             'A': standard_encoding['input_ids'].squeeze(0),
             'B': kansai_encoding['input_ids'].squeeze(0),
         }
+    
+
+def get_text_embedding(src, embedding_layer):
+    outputs = embedding_layer(src)
+    bert_emb = outputs.last_hidden_state  # [batch_size, seq_len, 768]
+    bert_emb = bert_emb.reshape(bert_emb.size(0), bert_emb.size(1), 256, 3)  # [batch_size, seq_len, 256, 3]
+    emb_256 = bert_emb.mean(dim=-1)  # [batch_size, seq_len, 256]
+    return emb_256

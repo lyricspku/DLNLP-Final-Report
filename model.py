@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
 from flash_attention import MHA
+from util import get_text_embedding
 
 class Generator(nn.Module):
-    def __init__(self, vocab_size, d_model=256, nhead=8, num_encoder_layers=1, num_decoder_layers=1):
+    def __init__(self, vocab_size, embedding_layer, d_model=256, nhead=8, num_encoder_layers=1, num_decoder_layers=1):
         super(Generator, self).__init__()
         
         self.d_model = d_model
         self.vocab_size = vocab_size
 
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.embedding = embedding_layer
         self.encoder = MHA(d_model, nhead, dropout=0.1)
         self.decoder = nn.TransformerDecoder(
             nn.TransformerDecoderLayer(d_model=d_model, nhead=nhead),
@@ -21,14 +22,14 @@ class Generator(nn.Module):
         """
         src: [batch_size, seq_len]
         """
-        src = self.embedding(src)  # [batch_size, src_len, d_model]
+        src = get_text_embedding(src, self.embedding)  # [batch_size, seq_len, d_model]
         src = src.permute(1, 0, 2)  # [src_len, batch_size, d_model]
         memory = self.encoder(src)  # [src_len, batch_size, d_model]
         tgt = torch.zeros(src.size(1), 1).long().to(src.device)  # [batch_size, 1]
 
         generated_tokens = []
-        for _ in range(128):
-            tgt_emb = self.embedding(tgt)  # [batch_size, tgt_len, d_model]
+        for _ in range(100):
+            tgt_emb = get_text_embedding(tgt, self.embedding)  # [batch_size, tgt_len, d_model]
             tgt_emb = tgt_emb.permute(1, 0, 2)  # [tgt_len, batch_size, d_model]
             output = self.decoder(tgt_emb, memory)  # [tgt_len, batch_size, d_model]
             logits = self.output_layer(output)  # [tgt_len, batch_size, vocab_size]
@@ -41,13 +42,13 @@ class Generator(nn.Module):
     
 
 class Discriminator(nn.Module):
-    def __init__(self, vocab_size, d_model=256, nhead=8, num_layers=1):
+    def __init__(self, vocab_size, embedding_layer, d_model=256, nhead=8, num_layers=1):
         super(Discriminator, self).__init__()
         
         self.d_model = d_model
         self.vocab_size = vocab_size
 
-        self.embedding = nn.Embedding(vocab_size, d_model)
+        self.embedding = embedding_layer
         self.transformer_encoder = MHA(d_model, nhead, dropout=0.1)
         self.fc1 = nn.Linear(d_model, 256)
         self.fc2 = nn.Linear(256, 1)
@@ -57,7 +58,7 @@ class Discriminator(nn.Module):
         """
         x: [batch_size, seq_len]
         """
-        x = self.embedding(x)  # [batch_size, seq_len, d_model]
+        x = get_text_embedding(x, self.embedding)
         x = x.permute(1, 0, 2)  # [seq_len, batch_size, d_model]
         x = self.transformer_encoder(x)  # [seq_len, batch_size, d_model]
         x = x.mean(dim=0)  # [batch_size, d_model]
